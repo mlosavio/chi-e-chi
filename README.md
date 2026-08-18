@@ -177,16 +177,31 @@ cp .env.example .env                       # e ci si mette la chiave
 Il `.env` lo legge `prova.py` da sé, senza librerie. Le variabili già esportate
 nell'ambiente vincono su quelle del file.
 
-Accetta anche un percorso, e anche un PDF (`pip install -e ".[pdf]"`):
+Nel repo ci sono **due documenti di prova**, e vale la pena provarli entrambi:
 
 ```bash
-.venv/bin/python prova.py esempi/contratto-assunzione.txt
-.venv/bin/python prova.py ~/un-contratto-vero.pdf
+.venv/bin/python prova.py esempi/contratto-assunzione.txt   # 2 KB, testo
+.venv/bin/python prova.py esempi/contratto-cuoco.pdf        # 4 pagine, PDF
 ```
 
-Il documento d'esempio è un fac-simile: nomi, indirizzi e recapiti sono inventati. I codici
-fiscali sono **validi come checksum**, perché è esattamente ciò che l'esempio dimostra — con
-codici finti il passaggio deterministico non avrebbe niente da calcolare.
+Il primo ha **due codici fiscali validi** — quello del lavoratore e quello di chi firma — e
+il rilevatore da solo non può sceglierne uno: serve il modello per dire quale nome conta, e
+poi il checksum dice quale codice è il suo.
+
+Il secondo ne ha **uno solo**, e allora il passaggio deterministico fa quasi tutto da sé:
+
+```
+2 · attribuzione deterministica
+    risolti dal checksum del codice fiscale: codice_fiscale, cognome, data_nascita, nome.
+    Restano ambigui: cap, citta, datore, email, provincia, telefono, via.
+```
+
+Sono documenti di simulazione: persone, recapiti e indirizzi sono generati, e le e-mail usano
+il dominio riservato `example.com` (RFC 2606). I codici fiscali sono **validi come
+checksum** — con codici finti il passaggio deterministico non avrebbe niente da calcolare, e
+metà dell'esempio non si vedrebbe.
+
+Per i PDF serve `pip install -e ".[pdf]"`.
 
 I test girano senza niente acceso, né rilevatore né modello:
 
