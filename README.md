@@ -155,30 +155,52 @@ Con un avviso che dice **come** ci si è arrivati:
 
 ## Provarlo
 
+Servono due cose accese, e una sola è obbligatoria.
+
+**1 · Il rilevatore, in locale.** [rizzo-pii](https://github.com/Rizzo-AI-Academy/rizzo-pii)
+gira su CPU, in un container. Quando è pronto, `http://127.0.0.1:5005/health` risponde
+`model_loaded: true` — ci mette una decina di secondi dall'avvio.
+
+**2 · Il modello.** Facoltativo. Senza chiave il programma funziona: attribuisce quello che
+il codice sa calcolare da solo, e dichiara cosa si sta perdendo.
+
 ```bash
 git clone <questo-repo> && cd chi-e-chi
-pip install -e .
 
-# 1. Il rilevatore, in locale: https://github.com/Rizzo-AI-Academy/rizzo-pii
-#    Gira su CPU, in un container. Senza, il programma parte lo stesso e non estrae.
-export PII_URL=http://127.0.0.1:5005
+python -m venv .venv
+.venv/bin/pip install -e ".[ai]"          # Windows: .venv\Scripts\pip
 
-# 2. Il modello. Senza chiave il programma funziona: dà meno, e lo dichiara.
-export ANTHROPIC_API_KEY=sk-ant-...
-export LLM_MODEL=claude-sonnet-5
-
-python prova.py esempi/contratto-assunzione.txt
+cp .env.example .env                       # e ci si mette la chiave
+.venv/bin/python prova.py                  # Windows: .venv\Scripts\python
 ```
 
-Accetta anche un PDF (serve `pip install pypdf`). Il documento d'esempio è un fac-simile:
-nomi, codici e recapiti sono inventati — i codici fiscali sono validi come checksum perché
-è **esattamente** ciò che l'esempio dimostra.
+Il `.env` lo legge `prova.py` da sé, senza librerie. Le variabili già esportate
+nell'ambiente vincono su quelle del file.
 
-I test girano senza niente acceso:
+Accetta anche un percorso, e anche un PDF (`pip install -e ".[pdf]"`):
 
 ```bash
-pytest
+.venv/bin/python prova.py esempi/contratto-assunzione.txt
+.venv/bin/python prova.py ~/un-contratto-vero.pdf
 ```
+
+Il documento d'esempio è un fac-simile: nomi, indirizzi e recapiti sono inventati. I codici
+fiscali sono **validi come checksum**, perché è esattamente ciò che l'esempio dimostra — con
+codici finti il passaggio deterministico non avrebbe niente da calcolare.
+
+I test girano senza niente acceso, né rilevatore né modello:
+
+```bash
+.venv/bin/pip install -e ".[dev]" && .venv/bin/pytest
+```
+
+### Se qualcosa non va
+
+| cosa si vede | cosa vuol dire |
+|---|---|
+| `rilevatore: … (SPENTO)` | il container non risponde su `PII_URL`. Il programma lo dice e si ferma: senza maschera non manda niente a nessuno. |
+| `modello: — (SPENTO)` | manca `ANTHROPIC_API_KEY`. Funziona lo stesso: escono i campi calcolati dal codice fiscale, e un avviso dice cosa manca. |
+| `verso: incerto` | il modello non ha distinto le parti. Allora **non attribuisce niente** che non sia certo per costruzione: una scheda mescolata è peggio di una vuota. |
 
 ## Quello che ho misurato
 
@@ -213,12 +235,3 @@ Il caso in cui **non** funziona è dichiarato: un PDF che è la scansione di una
 un livello di testo, e il rilevatore legge testo, non fa OCR. Lì o si fa OCR in locale, o si
 manda fuori il documento — e va detto a chi lo sta caricando.
 
-## Da dove viene
-
-È il meccanismo di lettura documenti di [ML2Chain](https://mltwo.it), un gestionale per
-catene di punti operativi, estratto e isolato per essere leggibile. Là dentro riempie la
-scheda di un dipendente quando si trascina il suo contratto sulla pagina.
-
-## Licenza
-
-Da decidere.

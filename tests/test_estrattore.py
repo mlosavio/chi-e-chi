@@ -202,6 +202,20 @@ def test_senza_modello_non_si_perde_quello_che_il_rilevatore_aveva_trovato():
     assert any("non è disponibile" in a for a in esito.avvisi)
 
 
+def test_le_parentesi_quadre_perse_dal_modello_si_rimettono():
+    """Il modello a volte risponde `STREET_2 BUILDINGNUM_2` invece di `[STREET_2]
+    [BUILDINGNUM_2]`. Senza parentesi la ricomposizione non scatta e resta a video il nome
+    del segnaposto — il modo più stupido di perdere una risposta giusta. E anche il controllo
+    dei tipi smette di funzionare, perché le parentesi le cerca."""
+    mappa = {"[STREET_2]": "Via Matarrese", "[BUILDINGNUM_2]": "9"}
+    assert pii.normalizza("STREET_2 BUILDINGNUM_2", mappa) == "[STREET_2] [BUILDINGNUM_2]"
+    assert pii.ricomponi("STREET_2 BUILDINGNUM_2", mappa) == "Via Matarrese 9"
+    # Già a posto: non si tocca, e non si raddoppiano le parentesi.
+    assert pii.normalizza("[STREET_2]", mappa) == "[STREET_2]"
+    # Una parola maiuscola che non è un segnaposto resta quello che è.
+    assert pii.normalizza("PIZZAIOLO", mappa) == "PIZZAIOLO"
+
+
 def test_senza_testo_mascherato_non_si_manda_niente_a_nessuno():
     """Se il rilevatore non ha prodotto una maschera — servizio a metà, documento senza
     testo — **non si chiama il modello**: non ci sarebbe niente da mandargli che non sia il

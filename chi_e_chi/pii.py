@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -101,12 +102,34 @@ def ricomponi(testo: str, mappa: dict[str, str]) -> str:
     e il nome torna **qui**. Senza questa funzione l'anonimizzazione sarebbe solo una
     perdita di dati.
     """
-    ricomposto = testo or ""
+    ricomposto = normalizza(testo, mappa)
     # Dal segnaposto più lungo al più corto: `[FULLNAME_10]` contiene `[FULLNAME_1]`, e
     # sostituendo prima il corto si rovinerebbe il lungo.
     for segnaposto in sorted(mappa, key=len, reverse=True):
         ricomposto = ricomposto.replace(segnaposto, mappa[segnaposto])
     return ricomposto
+
+
+def normalizza(testo: str, mappa: dict[str, str]) -> str:
+    """Rimette le parentesi quadre ai segnaposto che le hanno perse.
+
+    **Il modello a volte risponde `FULLNAME_2` invece di `[FULLNAME_2]`**, e su una risposta
+    composta — «via e numero civico» — le perde tutte e due: `STREET_2 BUILDINGNUM_2`. Senza
+    parentesi la sostituzione non scatta e resta a video il nome del segnaposto, che è il
+    modo più stupido di perdere una risposta giusta. E anche il controllo dei tipi smette di
+    funzionare, perché cerca le parentesi.
+
+    Si normalizza **una volta sola**, prima di tutto il resto: qui, e non in tre posti che
+    poi divergono. Si rimettono solo ai nomi che esistono davvero nella mappa — non a una
+    parola maiuscola qualsiasi.
+    """
+    pulito = (testo or "").strip()
+    if not mappa:
+        return pulito
+    nudi = sorted((s[1:-1] for s in mappa if s.startswith("[")), key=len, reverse=True)
+    for nome in nudi:
+        pulito = re.sub(rf"(?<!\[){re.escape(nome)}(?!\])", f"[{nome}]", pulito)
+    return pulito
 
 
 # --------------------------------------------------------------------------

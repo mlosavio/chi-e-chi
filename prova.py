@@ -10,6 +10,7 @@ riesce a dire senza vedere un solo dato personale.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -21,6 +22,28 @@ from chi_e_chi import estrattore, modello, pii
 for flusso in (sys.stdout, sys.stderr):
     if hasattr(flusso, "reconfigure"):
         flusso.reconfigure(encoding="utf-8", errors="replace")
+
+
+def carica_env(percorso: Path = Path(".env")) -> None:
+    """Legge il `.env`, se c'è. Senza librerie.
+
+    Il file esisteva e nessuno lo leggeva: si diceva «copia `.env.example` in `.env`» e poi
+    le variabili non arrivavano da nessuna parte. Quindici righe qui valgono più di una
+    dipendenza in più su un progetto che si vanta di non averne.
+
+    Le variabili già presenti nell'ambiente **vincono**: chi le esporta a mano lo fa per
+    scavalcare il file, non per essere scavalcato.
+    """
+    if not percorso.exists():
+        return
+    for riga in percorso.read_text(encoding="utf-8").splitlines():
+        pulita = riga.strip()
+        if not pulita or pulita.startswith("#") or "=" not in pulita:
+            continue
+        chiave, valore = pulita.split("=", 1)
+        chiave = chiave.strip()
+        if chiave and chiave not in os.environ:
+            os.environ[chiave] = valore.strip().strip("'\"")
 
 
 def leggi(percorso: Path) -> str:
@@ -44,6 +67,7 @@ def riquadro(titolo: str) -> None:
 
 
 def main() -> int:
+    carica_env()
     percorso = Path(sys.argv[1] if len(sys.argv) > 1 else "esempi/contratto-assunzione.txt")
     if not percorso.exists():
         print(f"Non trovo {percorso}", file=sys.stderr)
@@ -56,7 +80,15 @@ def main() -> int:
     print(f"modello:    {getattr(cliente, 'modello', '—')}  "
           f"({'configurato' if not isinstance(cliente, modello.Spento) else 'SPENTO'})")
 
-    esito = estrattore.estrai(testo, cliente=cliente)
+    try:
+        esito = estrattore.estrai(testo, cliente=cliente)
+    except pii.PiiNonDisponibile as errore:
+        # Senza rilevatore non c'è niente da mostrare, e la traccia di uno stack non spiega
+        # cosa fare. Il messaggio dice il come, non il perché tecnico.
+        print(f"\nIl rilevatore non risponde ({errore}).")
+        print(f"Atteso su {pii.indirizzo()} — avvialo, oppure cambia PII_URL nel .env.")
+        print("Si scarica da https://github.com/Rizzo-AI-Academy/rizzo-pii")
+        return 1
 
     riquadro("I TRE PASSAGGI")
     for passo in esito.traccia:

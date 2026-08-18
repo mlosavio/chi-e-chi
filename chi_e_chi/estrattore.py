@@ -324,11 +324,15 @@ def _applica(esito: Esito, dati: dict, analisi: pii.Analisi, ponte: bool) -> Non
         if trovata:
             campi = {**campi, "nome_completo": trovata.group(1)}
 
-    for chiave, grezzo in campi.items():
-        if chiave in esito.certi or not grezzo:
+    for chiave, valore in campi.items():
+        if chiave in esito.certi or not valore:
             continue
         if chiave != "nome_completo" and chiave not in schema.NOMI:
             continue
+        # **Una volta sola, prima di tutto il resto**: se il modello ha perso le parentesi
+        # quadre gliele si rimette, o il controllo dei tipi non le trova e la ricomposizione
+        # non scatta.
+        grezzo = pii.normalizza(str(valore), analisi.mappa)
         # **Il tipo lo ha già deciso il rilevatore.** Se arriva `[ORG_1]` per «via», si
         # scarta: nel campo comparirebbe la ragione sociale, che sembra un dato.
         if not schema.tipo_compatibile(chiave, str(grezzo), analisi.etichetta_di):
