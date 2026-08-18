@@ -1,0 +1,18 @@
+# La chiave del modello non entra nel repository. Mai.
+.env
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# I documenti veri non stanno in un repository di esempio: quelli in `esempi/` sono
+# fac-simile con nomi e codici inventati, e devono restare gli unici.
+prove/
+*.pdf
+!esempi/*.pdf

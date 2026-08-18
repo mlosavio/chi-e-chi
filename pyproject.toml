@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chi-e-chi"
+version = "0.1.0"
+description = "Estrarre dati da un contratto senza mandarlo fuori: il rilevatore trova, il modello assegna i ruoli"
+requires-python = ">=3.11"
+
+# **Nessuna dipendenza obbligatoria**, ed è una scelta.
+#
+# Il rilevatore si chiama via HTTP con `urllib`, che è nella libreria standard. Il modello è
+# facoltativo per costruzione: senza, il programma funziona e lo dichiara. Un esempio che
+# per essere letto pretende di installare mezzo mondo è un esempio che non viene letto.
+dependencies = []
+
+[project.optional-dependencies]
+# Il modello. Senza, restano i campi che il rilevatore attribuisce da solo.
+ai = ["anthropic>=0.40"]
+# Per leggere i PDF invece dei .txt.
+pdf = ["pypdf>=5.1"]
+dev = ["pytest>=8.3", "ruff>=0.8"]
+
+[tool.setuptools.packages.find]
+include = ["chi_e_chi*"]
+
+[tool.ruff]
+line-length = 96
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "S", "C4", "SIM"]
+ignore = ["S101"]   # `assert` nei test è il punto dei test
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
