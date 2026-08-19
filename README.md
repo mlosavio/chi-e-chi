@@ -19,6 +19,10 @@ Il fornitore del modello non vede un solo dato personale. Eppure risponde questo
         18 campi compilati, 0 da scrivere a mano.
 ```
 
+> 📐 **[ARCHITETTURA.md](ARCHITETTURA.md)** — l'engine per intero: i diagrammi del confine e
+> del flusso, la mappa dei moduli, le degradazioni, l'architettura scartata e perché, i
+> numeri misurati. Questo README racconta l'idea; quello descrive il motore.
+
 ---
 
 ## Il problema
