@@ -1,34 +1,34 @@
 # Chi è chi
 
-**Estrarre i dati di un contratto di assunzione senza mandare il contratto fuori.**
+**Leggere un contratto di assunzione senza mandare il contratto fuori.**
 
-Un rilevatore di dati personali che gira in locale trova le entità; un modello linguistico,
-leggendo il testo **mascherato**, decide quale entità ha quale ruolo — chi è il datore di
-lavoro e chi il dipendente. I valori tornano al loro posto qui, sulla propria macchina.
+Un anonimizzatore che gira in locale maschera ogni dato personale; un modello linguistico,
+leggendo il testo **mascherato**, dice che cosa c'è nel documento — quali entità, con quale
+ruolo, con quali attributi, legate da quali relazioni. I valori tornano al loro posto qui,
+sulla propria macchina, e il dominio decide quali sono validi.
 
 Il fornitore del modello non vede un solo dato personale. Eppure risponde questo:
 
 ```
-CHI È CHI — quello che il modello ha capito senza vedere i nomi
-  soggetto     Ben Salah Karim
-  controparte  RISTORAZIONE MEDITERRANEA S.R.L.
-  verso        chiaro
-  perché       L'atto è emesso da RISTORAZIONE MEDITERRANEA S.R.L. («Sede legale»,
-               firma «Il legale rappresentante Domenico Sarnataro») e indirizzato
-               «Egr. Sig. Karim Ben Salah», i cui dati sono ripresi al punto 1
-               «DATI DEL LAVORATORE».
+ 4.5 s  1 · anonimizzazione (in locale)
+        51 entità, 12 tipi; 35 segnaposto. Da qui in poi esce solo il testo mascherato.
+31.0 s  2 · lettura sul testo mascherato
+        lettera_assunzione · verso chiaro · 4 entità
+        (datore, legale_rappresentante, lavoratore, sede_di_lavoro), 1 relazioni.
+    —   3 · mappatura sulla scheda
+        18 campi compilati, 0 da scrivere a mano.
 ```
 
 ---
 
 ## Il problema
 
-Un rilevatore di entità dà **tipi, non ruoli**.
+Un anonimizzatore dà **tipi, non ruoli**.
 
-Su una lettera di assunzione di due pagine ne trova cinquanta: due `FULLNAME`, due `CF`,
-tre `STREET`, sei `DATE`, due `EMAIL`. E ha ragione su tutte. Ma «qui ci sono due persone»
-non è «questa è quella che stai assumendo», e nessuna quantità di riconoscimento di entità
-colma quella distanza.
+Su una lettera di assunzione di due pagine trova cinquantuno entità: due `FULLNAME`, due
+`CF`, tre `STREET`, sei `DATE`, due `EMAIL`. E ha ragione su tutte. Ma «qui ci sono due
+persone» non è «questa è quella che stai assumendo», e nessuna quantità di riconoscimento di
+entità colma quella distanza.
 
 Il ruolo non sta nel dato. Sta **nelle parole intorno**:
 
@@ -52,117 +52,146 @@ che esce.
 Il modello riceve questo:
 
 ```
+[ORG_1]
+Sede legale: [STREET_1] [BUILDINGNUM_1] — [ZIPCODE_1] [CITY_1] ([PROVINCE_1])
+PEC: [EMAIL_1] — Tel. [TELEPHONENUM_2]
+
 Egr. Sig.
 [FULLNAME_1]
-[STREET_3] [BUILDINGNUM_3]
-[ZIPCODE_1] [CITY_1] ([PROVINCE_1])
+[STREET_2] [BUILDINGNUM_2]
 
 1. DATI DEL LAVORATORE
-   Cognome e nome: [FULLNAME_1]
-   Nato a: [CITY_4] il [DATE_2]
+   Cognome e nome: [FULLNAME_2]
+   Nato a: [CITY_2] ([CITY_3]) il [DATE_2]
    Codice fiscale: [CF_1]
 ```
 
-e ha tutto quello che gli serve per dire che `[FULLNAME_1]` è il lavoratore e `[STREET_3]`
-è la **sua** residenza — senza sapere come si chiama e senza che nessuno glielo dica.
+e ha tutto quello che gli serve per dire che `[FULLNAME_1]` è il lavoratore, che
+`[STREET_2]` è la **sua** residenza e che `[EMAIL_1]` è invece dell'azienda — senza sapere
+come si chiama nessuno, e senza che nessuno glielo dica.
 
 ## I tre passaggi
 
 ```
-  1. RILEVATORE       tutto in locale. Trova le entità e ne attribuisce quelle che sa
-     (rizzo-pii)      attribuire da solo — per aritmetica, non per ipotesi.
+  1. ANONIMIZZARE   tutto in locale. Ogni dato personale diventa un segnaposto, e la
+     (rizzo-pii)    mappa per rimetterli a posto NON esce da questo processo.
 
-  2. MODELLO          sul testo MASCHERATO. Decide chi è chi. È l'unica cosa che un
-     (LLM)            rilevatore di entità non può fare.
+  2. LEGGERE        sul testo MASCHERATO, una domanda sola: che cosa c'è dentro.
+     (LLM)          Entità, ruoli, attributi, relazioni.
 
-  3. RICOMPOSIZIONE   i segnaposto tornano valori, in locale, e poi si validano.
+  3. MAPPARE        la lettura diventa una scheda, i valori tornano dalla mappa, e il
+     (codice)       dominio decide quali sono validi.
 ```
 
-### 1 · Quello che il codice sa da solo
+### Cosa si chiede al modello
 
-Il passaggio 2 costa tempo e denaro, quindi si fa **solo per quello che resta**.
+Non un modulo da riempire: una **lettura**.
 
-Un codice fiscale con il checksum giusto *contiene* la data di nascita, e con la regola delle
-prime sei lettere dice quale dei nomi trovati è il suo. Non è un'euristica, è aritmetica:
+```json
+{
+  "documento": {"natura": "lettera_assunzione", "verso": "chiaro", "spiegazione": "…"},
+  "entita": [
+    {"tipo": "persona", "ruolo": "lavoratore",
+     "attributi": {"nome_completo": "[FULLNAME_2]", "codice_fiscale": "[CF_1]"}},
+    {"tipo": "organizzazione", "ruolo": "datore", "attributi": {"…": "…"}},
+    {"tipo": "persona", "ruolo": "legale_rappresentante", "attributi": {"…": "…"}}
+  ],
+  "relazioni": [
+    {"tipo": "rapporto_di_lavoro",
+     "attributi": {"data_inizio": "1° settembre 2026", "mansione": "pizzaiolo",
+                   "ore_settimanali": "40", "livello_inquadramento": "4° livello"}}
+  ]
+}
+```
+
+La differenza non è stilistica. Chiedere «qual è la data di assunzione» è chiedere una riga
+di una tabella che il modello deve comunque ricostruire per intero — e ogni riga che non si
+pensa a chiedere è una riga persa. Chiedere «dimmi che cosa c'è dentro» la fa costruire una
+volta sola, completa.
+
+Da lì alla scheda è **codice esatto**: una tabella dichiarata in
+[`scheda.py`](chi_e_chi/scheda.py), nessuna interpretazione. Interpretare è il lavoro del
+passaggio prima, e tenerli separati è il motivo per cui, quando qualcosa non torna, si sa
+quale dei due ha sbagliato.
+
+### Se il verso non è chiaro, non si fa niente
+
+Ogni atto ha due parti: chi lo emette e chi lo riceve. Se il modello non le distingue, lo
+**dichiara**, e allora non si compila niente: una scheda mescolata è peggio di una vuota.
+
+### Il dominio decide, sempre
+
+Il modello propone; il codice esatto decide. Un codice fiscale con il carattere di controllo
+sbagliato non entra nella scheda con l'aria di essere giusto — è esattamente il dato che
+nessuno riverifica dopo che «l'ha letto il computer».
+
+E dove il codice sa fare meglio, fa meglio:
 
 ```python
-dominio.nome_dal_codice(["Domenico Sarnataro", "Ben Salah Karim"], "BNSKRM94C12Z352D")
-# ('Ben Salah', 'Karim')
+dominio.nome_dal_codice(["Karim Ben Salah"], "BNSKRM94C12Z352D")
+# ('Ben Salah', 'Karim')     ← non indovinato: calcolato
 ```
 
-Fra due nomi non si indovina: si calcola. E quando il calcolo basta, il modello non si
-chiama affatto.
+«Ben Salah Karim» e «Karim Ben Salah» si scrivono entrambi, e la convenzione sbaglia una
+volta su due. Le prime sei lettere del codice fiscale sono consonanti di cognome e nome in
+quest'ordine: l'ordine non si indovina, si calcola. E da lì discendono anche la data di
+nascita e il sesso, che nel codice ci sono già.
 
-### 2 · Chi è chi
-
-Al modello si chiede il **verso dell'atto** prima dei campi: chi lo emette (il *dante causa*)
-e chi lo riceve (l'*avente causa*). Poi si chiede di attribuire, e in più l'elenco dei
-segnaposto che appartengono alla controparte — quelli si potano dai menù.
-
-Se il verso non è chiaro, il modello lo dichiara e **non si attribuisce niente** che non sia
-certo per costruzione. Una scheda mescolata è peggio di una vuota.
-
-### 3 · Ricomposizione, e poi i controlli
-
-I segnaposto tornano valori **qui**, dalla mappa che non è mai uscita. E solo dopo si valida:
-un `[ZIPCODE_3]` non è un CAP di cinque cifre, e validare prima di ricomporre significa
-buttare via la risposta giusta.
-
-## Le due regole che tengono in piedi il resto
-
-**«Certo per costruzione» non è «ce n'era uno solo».**
-Il codice fiscale validato è aritmetica: nessuna rilettura lo migliora, e il modello non lo
-tocca. «C'era una sola email nel documento» è invece un'ipotesi — e su una carta intestata è
-pure sbagliata. I primi non si toccano; i secondi si sottopongono al modello, che ha il
-contesto davanti.
-
-**Il tipo di un dato lo decide il rilevatore, non il modello.**
-Alla domanda «quale segnaposto è la via» può arrivare `[ORG_1]`. Il rilevatore aveva già
-deciso che è un'organizzazione, e quella decisione vince: la risposta si scarta e il campo
-resta visibilmente vuoto invece che invisibilmente falso.
-
-```python
-schema.tipo_compatibile("via", "[STREET_2] [BUILDINGNUM_2]")   # True — via e civico
-schema.tipo_compatibile("via", "[ORG_1]")                      # False — è una società
-```
+Lo stesso vale per le date come le scrivono i documenti («1° settembre 2026»), per le
+province («Bari» → `BA`) e per le nazionalità («di nazionalità marocchina» → `MA`).
 
 ## Il risultato, sul contratto d'esempio
 
-15 campi, tutti corretti. Il codice fiscale scelto è quello del lavoratore e non quello del
-legale rappresentante — entrambi validi, e il rilevatore da solo non poteva sceglierne uno.
+**18 campi, nessun campo mancante, nessun avviso.**
 
 ```json
 {
   "cognome": "Ben Salah",   "nome": "Karim",
   "codice_fiscale": "BNSKRM94C12Z352D",
   "data_nascita": "1994-03-12",
+  "nazionalita": "MA",
   "via": "Via Salvatore Matarrese 9",
   "cap": "70124", "citta": "Bari", "provincia": "BA",
   "email": "karim.bensalah94@gmail.com",
   "telefono": "347 6612094",
   "datore": "RISTORAZIONE MEDITERRANEA S.R.L.",
+  "sede_lavoro": "La Bruschetta",
   "data_assunzione": "2026-09-01",
   "tipo_contratto": "indeterminato",
   "mansione": "pizzaiolo",
+  "livello_inquadramento": "4° livello",
   "monte_ore_settimanale": "40"
 }
 ```
 
-Con un avviso che dice **come** ci si è arrivati:
+L'email è quella del lavoratore e non la PEC aziendale; l'indirizzo è la sua residenza e non
+la sede legale; il codice fiscale è il suo e non quello del legale rappresentante — ce ne
+sono **due validi** nel documento, e nessun anonimizzatore poteva sceglierne uno.
 
-> Il codice fiscale BNSKRM94C12Z352D è coerente con «Ben Salah Karim»: cognome, nome e data
-> di nascita non sono stati letti, sono stati **calcolati**.
+## La stessa lettura, schede diverse
+
+`persona` compila un dipendente e il suo rapporto di lavoro. `locale` compila una sede
+operativa — e in un contratto di locazione ci sono **tre indirizzi**, la sede del locatore,
+quella del conduttore e l'immobile, e solo il terzo è il locale.
+
+La domanda al modello è la stessa. Cambia la tabella che traduce la lettura in campi:
+
+```bash
+python prova.py contratto.pdf persona
+python prova.py contratto.pdf locale
+```
 
 ## Provarlo
 
 Servono due cose accese, e una sola è obbligatoria.
 
-**1 · Il rilevatore, in locale.** [rizzo-pii](https://github.com/Rizzo-AI-Academy/rizzo-pii)
-gira su CPU, in un container. Quando è pronto, `http://127.0.0.1:5005/health` risponde
-`model_loaded: true` — ci mette una decina di secondi dall'avvio.
+**1 · L'anonimizzatore, in locale.**
+[rizzo-pii](https://github.com/Rizzo-AI-Academy/rizzo-pii) gira su CPU, in un container.
+Quando è pronto, `http://127.0.0.1:5005/health` risponde `model_loaded: true` — ci mette una
+decina di secondi dall'avvio.
 
-**2 · Il modello.** Facoltativo. Senza chiave il programma funziona: attribuisce quello che
-il codice sa calcolare da solo, e dichiara cosa si sta perdendo.
+**2 · Il modello.** Senza chiave il programma funziona: torna una scheda vuota e dice cosa
+si sta perdendo. Senza modello non c'è nessuno che sappia dire chi è chi.
 
 ```bash
 git clone <questo-repo> && cd chi-e-chi
@@ -177,33 +206,21 @@ cp .env.example .env                       # e ci si mette la chiave
 Il `.env` lo legge `prova.py` da sé, senza librerie. Le variabili già esportate
 nell'ambiente vincono su quelle del file.
 
-Nel repo ci sono **due documenti di prova**, e vale la pena provarli entrambi:
+Nel repo ci sono due documenti di prova:
 
 ```bash
 .venv/bin/python prova.py esempi/contratto-assunzione.txt   # 2 KB, testo
 .venv/bin/python prova.py esempi/contratto-cuoco.pdf        # 4 pagine, PDF
 ```
 
-Il primo ha **due codici fiscali validi** — quello del lavoratore e quello di chi firma — e
-il rilevatore da solo non può sceglierne uno: serve il modello per dire quale nome conta, e
-poi il checksum dice quale codice è il suo.
-
-Il secondo ne ha **uno solo**, e allora il passaggio deterministico fa quasi tutto da sé:
-
-```
-2 · attribuzione deterministica
-    risolti dal checksum del codice fiscale: codice_fiscale, cognome, data_nascita, nome.
-    Restano ambigui: cap, citta, datore, email, provincia, telefono, via.
-```
-
 Sono documenti di simulazione: persone, recapiti e indirizzi sono generati, e le e-mail usano
 il dominio riservato `example.com` (RFC 2606). I codici fiscali sono **validi come
-checksum** — con codici finti il passaggio deterministico non avrebbe niente da calcolare, e
-metà dell'esempio non si vedrebbe.
+checksum** — con codici finti metà dell'esempio non si vedrebbe, perché il dominio non
+avrebbe niente da calcolare.
 
 Per i PDF serve `pip install -e ".[pdf]"`.
 
-I test girano senza niente acceso, né rilevatore né modello:
+I test girano senza niente acceso, né anonimizzatore né modello:
 
 ```bash
 .venv/bin/pip install -e ".[dev]" && .venv/bin/pytest
@@ -213,9 +230,10 @@ I test girano senza niente acceso, né rilevatore né modello:
 
 | cosa si vede | cosa vuol dire |
 |---|---|
-| `rilevatore: … (SPENTO)` | il container non risponde su `PII_URL`. Il programma lo dice e si ferma: senza maschera non manda niente a nessuno. |
-| `modello: — (SPENTO)` | manca `ANTHROPIC_API_KEY`. Funziona lo stesso: escono i campi calcolati dal codice fiscale, e un avviso dice cosa manca. |
-| `verso: incerto` | il modello non ha distinto le parti. Allora **non attribuisce niente** che non sia certo per costruzione: una scheda mescolata è peggio di una vuota. |
+| `anonimizzatore: … (SPENTO)` | il container non risponde su `PII_URL`. Il programma lo dice e si ferma: senza maschera non manda niente a nessuno. |
+| `modello: — (SPENTO)` | manca `ANTHROPIC_API_KEY`. Torna una scheda vuota con l'avviso: l'anonimizzatore sa che lì c'è un nome, non di chi è. |
+| `verso: incerto` | il modello non ha distinto le parti, e allora **non compila niente**: una scheda mescolata è peggio di una vuota. |
+| `non ha prodotto testo mascherato` | il PDF è la scansione di un'immagine. Non c'è niente da mascherare, e quindi niente da mandare fuori. |
 
 ## Quello che ho misurato
 
@@ -223,30 +241,48 @@ Sulla macchina di sviluppo, un portatile senza GPU:
 
 | | |
 |---|---|
-| rilevatore, costo | **~1,5 ms per carattere**, lineare su tutta la scala |
-| rilevatore, 2.400 caratteri | ~5 s |
-| rilevatore, 19.000 caratteri | ~26 s |
-| rilevatore, richieste in parallelo | **non parallelizza**: 12 nuclei, 2/4/8 pezzi insieme rendono 1,0x / 0,8x / 0,9x |
-| modello, sul testo mascherato | 10–25 s, a seconda del modello |
+| anonimizzatore, costo | **~1,5 ms per carattere**, lineare su tutta la scala |
+| anonimizzatore, 2.400 caratteri | ~4,5 s |
+| anonimizzatore, 19.000 caratteri | ~26 s |
+| anonimizzatore, richieste in parallelo | **non parallelizza**: 12 nuclei, 2/4/8 pezzi insieme rendono 1,0x / 0,8x / 0,9x |
+| modello, lettura completa sul mascherato | ~31 s |
 
 Due conseguenze pratiche:
 
-- l'unica leva sul rilevatore è **mandargli meno testo**, e per farlo bisogna averlo in mano;
+- l'unica leva sull'anonimizzatore è **mandargli meno testo**, e per farlo bisogna averlo in
+  mano;
 - il tempo del modello se ne va **a scrivere**, non a leggere: dimezzare il testo in ingresso
-  non sposta l'attesa, ridurre la risposta sì.
+  non sposta l'attesa, ridurre la risposta sì. Ed è anche il motivo per cui **una** domanda
+  che chiede tutto costa meno di cinque domande che chiedono un campo ciascuna.
 
 Ho anche provato un modello più piccolo e veloce: 32 secondi invece di 54, e tre esecuzioni
-con tre risultati diversi. Attribuire un segnaposto al campo giusto *sembra* meccanico e non
-lo è — capire che una via è la residenza del dipendente e l'altra la sede della società è
-comprensione del testo. Venti secondi non valgono un campo sbagliato.
+con tre risultati diversi. Capire che una via è la residenza del dipendente e l'altra la sede
+della società *sembra* meccanico e non lo è: è comprensione del testo. Venti secondi non
+valgono un campo sbagliato.
 
 ## Cosa esce da questa macchina
 
 Il testo mascherato, e basta. La mappa segnaposto → valore resta nel processo che l'ha
-creata. `prova.py` lo mostra in fondo, con il conteggio dei valori personali rimasti nel
-testo uscito — che è zero.
+creata. `prova.py` lo mostra in fondo, con il conteggio dei valori mascherati rimasti nel
+testo uscito — che è zero, e che si calcola dove la mappa è in mano, non a valle dove non si
+potrebbe più.
 
 Il caso in cui **non** funziona è dichiarato: un PDF che è la scansione di una pagina non ha
-un livello di testo, e il rilevatore legge testo, non fa OCR. Lì o si fa OCR in locale, o si
-manda fuori il documento — e va detto a chi lo sta caricando.
+un livello di testo, e l'anonimizzatore legge testo, non fa OCR. Lì o si fa OCR in locale, o
+si manda fuori il documento — e va detto a chi lo sta caricando, non scoperto dopo.
 
+## Una nota su com'è nato
+
+La prima versione faceva un passaggio in più: l'anonimizzatore attribuiva i campi che sapeva
+attribuire da solo — «di email ce n'è una, sarà la sua» — e al modello si chiedeva solo il
+resto, campo per campo. Funzionava, e perdeva dati nelle cuciture: la nazionalità mascherata
+come nome proprio, la PEC aziendale nel campo del dipendente, i campi del contratto che
+nessuno pensava a chiedere.
+
+Erano tutti lo stesso difetto, ed era architetturale. **Un anonimizzatore non è un
+estrattore**, e ogni volta che gli si chiedeva un ruolo bisognava aggiungere un pezzo per
+correggere la risposta.
+
+Ora il compito di capire è tutto del modello, il compito di anonimizzare è tutto
+dell'anonimizzatore, e il compito di decidere se un dato è valido resta del codice. Il
+risultato, sullo stesso documento: da 15 campi con due avvisi a 18 campi senza avvisi.

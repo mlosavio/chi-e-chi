@@ -4,12 +4,14 @@
 **decide** — e su un codice fiscale non c'è niente da proporre: o il carattere di controllo
 torna, o quel codice è sbagliato, e nessuna rilettura lo migliora.
 
-Le tre cose che stanno qui sono aritmetica e lingua italiana:
+Le cose che stanno qui sono aritmetica, elenchi chiusi e lingua italiana:
 
 * il **checksum** del codice fiscale, e i dati che se ne ricavano (data di nascita, sesso);
 * la **coerenza** fra un codice fiscale e un nome — che è ciò che permette di scegliere,
   fra tre nomi in un contratto, quello che quel codice genera;
-* le **date come le scrivono i documenti**: «12 agosto 1994», «1° settembre 2026».
+* le **date come le scrivono i documenti**: «12 agosto 1994», «1° settembre 2026»;
+* i **nomi dei paesi e delle province**, che un documento scrive a parole — «di nazionalità
+  nigeriana», «provincia di Bari» — e una scheda vuole in codice.
 
 Ogni riga qui è una riga che non si chiede a un modello.
 """
@@ -143,6 +145,125 @@ def nome_dal_codice(nomi: list[str], codice: str) -> tuple[str, str] | None:
                 if coerente_con(codice, cognome, nome):
                     return cognome, nome
     return None
+
+
+# --------------------------------------------------------------------------
+# Elenchi chiusi: paesi e province
+#
+# **Perché elenchi e non campi liberi.** Un documento scrive «di nazionalità nigeriana» e la
+# scheda vuole `NG`; scrive «provincia di Bari» e la scheda vuole `BA`. Se ci finisce la
+# parola così com'è, il campo da due lettere la tronca o la rifiuta — e l'errore arriva
+# lontano da qui, dove nessuno lo collega al documento che lo ha causato.
+#
+# Sono **dati**, e i dati stanno in un posto solo. Scritti in forma compatta perché sono
+# elenchi da leggere, non codice da seguire.
+
+_PAESI_GREZZI = """
+IT:Italia:italia|italiana|italiano|ita; AL:Albania:albania|albanese;
+AT:Austria:austria|austriaca|austriaco; BE:Belgio:belgio|belga;
+BG:Bulgaria:bulgaria|bulgara|bulgaro; BR:Brasile:brasile|brasiliana|brasiliano;
+CN:Cina:cina|cinese; CO:Colombia:colombia|colombiana|colombiano;
+HR:Croazia:croazia|croata|croato; CU:Cuba:cuba|cubana|cubano;
+CZ:Cechia:cechia|repubblica ceca|ceca|ceco; DK:Danimarca:danimarca|danese;
+EC:Ecuador:ecuador|ecuadoriana|ecuadoriano; EG:Egitto:egitto|egiziana|egiziano;
+SV:El Salvador:el salvador|salvadoregna|salvadoregno;
+PH:Filippine:filippine|filippina|filippino; FI:Finlandia:finlandia|finlandese;
+FR:Francia:francia|francese; DE:Germania:germania|tedesca|tedesco;
+GH:Ghana:ghana|ghanese; GR:Grecia:grecia|greca|greco; IN:India:india|indiana|indiano;
+IE:Irlanda:irlanda|irlandese; MA:Marocco:marocco|marocchina|marocchino;
+MD:Moldavia:moldavia|moldova|moldava|moldavo; MK:Macedonia del Nord:macedonia|macedone;
+NG:Nigeria:nigeria|nigeriana|nigeriano; NL:Paesi Bassi:paesi bassi|olanda|olandese;
+PK:Pakistan:pakistan|pakistana|pakistano; PE:Perù:peru|perù|peruviana|peruviano;
+PL:Polonia:polonia|polacca|polacco; PT:Portogallo:portogallo|portoghese;
+RO:Romania:romania|rumena|rumeno|romena|romeno; RS:Serbia:serbia|serba|serbo;
+SN:Senegal:senegal|senegalese; ES:Spagna:spagna|spagnola|spagnolo;
+LK:Sri Lanka:sri lanka|srilankese|cingalese; SE:Svezia:svezia|svedese;
+CH:Svizzera:svizzera|svizzero; TN:Tunisia:tunisia|tunisina|tunisino;
+TR:Turchia:turchia|turca|turco; UA:Ucraina:ucraina|ucraino;
+HU:Ungheria:ungheria|ungherese;
+GB:Regno Unito:regno unito|gran bretagna|britannica|britannico|inglese|uk;
+US:Stati Uniti:stati uniti|statunitense|americana|americano|usa;
+VE:Venezuela:venezuela|venezuelana|venezuelano; BD:Bangladesh:bangladesh|bengalese
+"""
+"""Codice ISO : nome : le forme in cui la lingua italiana lo declina.
+
+Non è il mondo intero: è un elenco di esempio. Quello che manca si scrive a mano in due
+lettere; quello che c'è si riconosce in tutte le sue forme, che è il punto — un documento
+non dice mai «TN», dice «di nazionalità tunisina».
+"""
+
+_PROVINCE_GREZZE = """
+AG:Agrigento; AL:Alessandria; AN:Ancona; AO:Aosta; AR:Arezzo; AP:Ascoli Piceno; AT:Asti;
+AV:Avellino; BA:Bari; BT:Barletta-Andria-Trani; BL:Belluno; BN:Benevento; BG:Bergamo;
+BI:Biella; BO:Bologna; BZ:Bolzano; BS:Brescia; BR:Brindisi; CA:Cagliari; CL:Caltanissetta;
+CB:Campobasso; CE:Caserta; CT:Catania; CZ:Catanzaro; CH:Chieti; CO:Como; CS:Cosenza;
+CR:Cremona; KR:Crotone; CN:Cuneo; EN:Enna; FM:Fermo; FE:Ferrara; FI:Firenze; FG:Foggia;
+FC:Forlì-Cesena; FR:Frosinone; GE:Genova; GO:Gorizia; GR:Grosseto; IM:Imperia; IS:Isernia;
+SP:La Spezia; AQ:L'Aquila; LT:Latina; LE:Lecce; LC:Lecco; LI:Livorno; LO:Lodi; LU:Lucca;
+MC:Macerata; MN:Mantova; MS:Massa-Carrara; MT:Matera; ME:Messina; MI:Milano; MO:Modena;
+MB:Monza e della Brianza; NA:Napoli; NO:Novara; NU:Nuoro; OR:Oristano; PD:Padova;
+PA:Palermo; PR:Parma; PV:Pavia; PG:Perugia; PU:Pesaro e Urbino; PE:Pescara; PC:Piacenza;
+PI:Pisa; PT:Pistoia; PN:Pordenone; PZ:Potenza; PO:Prato; RG:Ragusa; RA:Ravenna;
+RC:Reggio Calabria; RE:Reggio Emilia; RI:Rieti; RN:Rimini; RM:Roma; RO:Rovigo; SA:Salerno;
+SS:Sassari; SV:Savona; SI:Siena; SR:Siracusa; SO:Sondrio; SU:Sud Sardegna; TA:Taranto;
+TE:Teramo; TR:Terni; TO:Torino; TP:Trapani; TN:Trento; TV:Treviso; TS:Trieste; UD:Udine;
+VA:Varese; VE:Venezia; VB:Verbano-Cusio-Ossola; VC:Vercelli; VR:Verona; VV:Vibo Valentia;
+VI:Vicenza; VT:Viterbo
+"""
+"""Le 107 province e città metropolitane in vigore. Cambiano di rado, e quando cambiano si
+tocca questa stringa."""
+
+
+def _voci(grezzo: str) -> list[list[str]]:
+    return [v.strip().split(":") for v in grezzo.replace("\n", " ").split(";") if v.strip()]
+
+
+PAESI: dict[str, str] = {c: n for c, n, _ in _voci(_PAESI_GREZZI)}
+_DA_PAROLA: dict[str, str] = {
+    parola: codice
+    for codice, _, varianti in _voci(_PAESI_GREZZI)
+    for parola in varianti.split("|")
+}
+PROVINCE: dict[str, str] = dict(_voci(_PROVINCE_GREZZE))  # type: ignore[arg-type]
+_DA_NOME: dict[str, str] = {n.lower(): s for s, n in PROVINCE.items()}
+
+
+def nazionalita(grezzo: str) -> str:
+    """«di nazionalità nigeriana» → `NG`. Stringa vuota se non si riconosce.
+
+    Vuota, e non la parola così com'era: un campo da due lettere che ne contiene nove rompe
+    da qualche altra parte, e lì nessuno lo collega al documento.
+
+    **Le due lettere non si traducono**: `TN` resta `TN`, anche se non è nell'elenco. La
+    funzione è idempotente perché la chiamano sia la lettura sia il salvataggio, e un dato
+    già a posto non deve peggiorare.
+    """
+    testo = (grezzo or "").strip()
+    if not testo:
+        return ""
+    if len(testo) == 2 and testo.isalpha():
+        return testo.upper()
+    piatto = " ".join(testo.lower().replace("-", " ").split())
+    parole = piatto.split()
+    # «di nazionalità tunisina», «cittadino marocchino»: la parola che conta è l'ultima.
+    for chiave in (piatto, parole[-1] if parole else ""):
+        if chiave in _DA_PAROLA:
+            return _DA_PAROLA[chiave]
+    return ""
+
+
+def provincia(grezzo: str) -> str:
+    """«Bari» → `BA`, e `BA` → `BA`. Stringa vuota se non è una provincia italiana.
+
+    Due lettere si sbagliano: «TO» e «TA» sono una consonante di distanza, e una provincia
+    sbagliata non dà nessun errore — dà un indirizzo che il geocodificatore non trova.
+    """
+    testo = (grezzo or "").strip()
+    if not testo:
+        return ""
+    if testo.upper() in PROVINCE:
+        return testo.upper()
+    return _DA_NOME.get(testo.lower(), "")
 
 
 # --------------------------------------------------------------------------

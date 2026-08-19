@@ -1,15 +1,32 @@
-"""Il rilevatore locale: rizzo-pii.
+"""Passaggio 1 · l'anonimizzatore: rizzo-pii, in locale.
 
 Un servizio che gira **sulla propria macchina** — CPU, in un container — e che su un testo
 italiano riconosce ventitré categorie di dati personali: nomi, codici fiscali, indirizzi,
-IBAN, date, partite IVA. Restituisce tre cose che qui servono tutte e tre:
+IBAN, date, partite IVA. Restituisce:
 
-* le **entità**, con il tipo e la validazione dei codici strutturati;
 * il **testo anonimizzato**, dove ogni valore è sostituito da un segnaposto `[TIPO_n]`;
-* la **mappa** segnaposto → valore originale, che **non esce mai da questo processo**.
+* la **mappa** segnaposto → valore originale, che **non esce mai da questo processo**;
+* le **entità**, con il tipo e la validazione dei codici strutturati.
 
-L'ultima è quella che rende possibile tutto il resto: si può mandare a un modello remoto il
-testo mascherato e ricomporre la risposta qui, in locale.
+## Che cosa fa, e che cosa non fa
+
+**Fa una cosa sola: rende un documento spedibile.** È tutto il suo valore, ed è enorme: da
+qui esce un testo che si può mandare a un modello remoto senza che ne esca un solo nome.
+
+**Non estrae dati.** Dà **tipi, non ruoli**: su una lettera di assunzione trova due
+`FULLNAME`, tre `STREET`, cinque `DATE`, e ha ragione su tutti. Ma «qui ci sono due persone»
+non è «questa è quella che stai assumendo», e nessuna quantità di riconoscimento di entità
+colma quella distanza.
+
+Per un po' questo esempio ha provato a colmarla — attribuiva i campi che sapeva attribuire
+da solo, «di email ce n'è una, sarà la sua» — e ogni volta bisognava aggiungere un pezzo per
+correggere il risultato. Erano tutti lo stesso difetto, ed era architetturale.
+
+## Il limite da conoscere
+
+Legge **testo**: un PDF con il livello di testo va benissimo, la fotografia di una pagina
+no — non fa OCR. Su quelle non c'è niente da mascherare, e mandarle fuori è una decisione
+che va dichiarata a chi la subisce, non scoperta dopo.
 
 Progetto: https://github.com/Rizzo-AI-Academy/rizzo-pii
 """
@@ -58,22 +75,15 @@ class Analisi:
     def per_etichetta(self, etichetta: str) -> list[str]:
         """I valori di un tipo, in ordine di apparizione e senza ripetizioni.
 
-        L'ordine si conserva perché porta informazione: in un documento il primo nome è
-        quasi sempre l'intestatario.
+        Resta perché serve a **guardare** cosa ha trovato l'anonimizzatore — nella traccia
+        dell'esempio e quando una lettura non torna. Non serve ad attribuire: quello lo fa
+        il modello, che è l'unico che vede i ruoli.
         """
         visti: list[str] = []
         for e in self.entita:
             if e.etichetta == etichetta and e.valore not in visti:
                 visti.append(e.valore)
         return visti
-
-    def etichetta_di(self, segnaposto: str) -> str:
-        """`[STREET_2]` → `STREET`. È il tipo, e lo ha deciso il rilevatore."""
-        grezzo = (segnaposto or "").strip()
-        if not (grezzo.startswith("[") and grezzo.endswith("]")):
-            return ""
-        dentro = grezzo[1:-1]
-        return (dentro.rsplit("_", 1)[0] if "_" in dentro else dentro).upper()
 
 
 def analizza(testo: str, *, chiedi=None) -> Analisi:
